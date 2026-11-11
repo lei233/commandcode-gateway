@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
-    "@mars-sea/dsh-commandcode-provider": "0.17.4"
+    "@mars-sea/dsh-commandcode-provider": "0.17.4",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
