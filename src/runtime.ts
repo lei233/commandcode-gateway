@@ -27,6 +27,7 @@ export {
   createToolResultMessage,
   createUserMessage,
   LlmError,
+  ReasoningEffortId,
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 
