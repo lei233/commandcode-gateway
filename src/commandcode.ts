@@ -21,6 +21,7 @@ import type {
   CommandCodeConnectionOptions,
   GenerateOptions,
   LlmModelInfo,
+  ResolveAttachments,
   StreamChunk,
 } from './runtime.ts'
 
@@ -71,12 +72,14 @@ function noRedirectFetch(underlying: typeof fetch): typeof fetch {
 
 /**
  * 经请求级 adapter 流式生成。迭代器由调用方恰好消费一次
- * （JSON 聚合或 SSE 编码）。
+ * （JSON 聚合或 SSE 编码）。带图请求传入 `resolveAttachments`
+ * 返回请求内存附件 store。
  */
 export function streamCommandCode(
   config: AdapterConfig,
   call: AdapterCall,
   options: Omit<GenerateOptions, 'signal' | 'provider'> & { provider?: string },
+  resolveAttachments?: ResolveAttachments,
 ): AsyncIterable<StreamChunk> {
   const idleMs = config.streamIdleTimeoutMs ?? 300_000
   const connection = connectionOptions(config, idleMs)
@@ -84,6 +87,7 @@ export function streamCommandCode(
     options: () => connection,
     resolveApiKey: async () => call.apiKey,
     fetchImpl: noRedirectFetch(config.fetchImpl ?? fetch),
+    ...(resolveAttachments !== undefined ? { resolveAttachments } : {}),
   }
   const adapter = new CommandCodeAdapter(deps)
   return adapter.stream({ ...options, provider: options.provider ?? PROVIDER, signal: call.signal })

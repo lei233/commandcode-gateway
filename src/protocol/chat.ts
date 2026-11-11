@@ -19,7 +19,7 @@ import {
   createUserMessage,
 } from '../runtime.ts'
 
-import type { ContentBlock, GenerateOptions, RequestMessage, ToolSchema } from '../runtime.ts'
+import type { ContentBlock, GenerateOptions, ImageAttachmentRef, RequestMessage, ToolSchema } from '../runtime.ts'
 
 export interface ChatRequestError {
   status: 400
@@ -28,9 +28,12 @@ export interface ChatRequestError {
 
 export interface ChatConversion {
   options: Omit<GenerateOptions, 'signal'>
-  /** 用户消息中的 data URL 图片，按出现顺序排列；由 images.ts 接管。 */
+  /** 用户消息中的 data URL 图片，按出现顺序排列；由 images.ts 准入。 */
   imageDataUrls: string[]
 }
+
+/** 图片引用解析：data URL → 已准入的附件引用（由调用方在转换前完成准入）。 */
+export type ImageRefResolver = (dataUrl: string) => ImageAttachmentRef | undefined
 
 const MAX_TOOL_CALL_ID_LENGTH = 64
 
@@ -166,8 +169,14 @@ function textParts(content: unknown, label: string): string[] {
 /**
  * 校验 Chat Completions body 并转换为 GenerateOptions 字段与图片 data URL 列表。
  * 任何不支持或畸形的输入以 ChatRequestError 抛出（isChatRequestError 识别）。
+ * 传入 `resolveImage` 时，图片 part 直接构造带附件引用的 ImageBlock；
+ * 缺省时图片只收集为 data URL 列表（调用方准入后可再次转换）。
  */
-export function chatToGenerateOptions(body: unknown, model: string): ChatConversion {
+export function chatToGenerateOptions(
+  body: unknown,
+  model: string,
+  resolveImage?: ImageRefResolver,
+): ChatConversion {
   if (!isObject(body)) throw invalid('request body must be a JSON object')
   if (body.n !== undefined && body.n !== 1) throw invalid('only a single candidate (n=1) is supported')
 
@@ -273,13 +282,14 @@ export function chatToGenerateOptions(body: unknown, model: string): ChatConvers
     if (role === 'user') {
       requireClosedBatch(label)
       const parts = userContent(message.content, label, imageDataUrls)
-      // M1：图片只收集为 data URL 列表（M4 由 images.ts 构造带附件引用的
-      // ImageBlock 并重建消息）；此处先落文本块占位顺序。
-      const blocks: ContentBlock[] = parts.map((part): ContentBlock =>
-        part.type === 'text'
-          ? { type: 'text', text: part.text }
-          : { type: 'text', text: `[image ${imageDataUrls.indexOf(part.dataUrl)}]` },
-      )
+      const blocks: ContentBlock[] = parts.map((part): ContentBlock => {
+        if (part.type === 'text') return { type: 'text', text: part.text }
+        const ref = resolveImage?.(part.dataUrl)
+        if (!ref) {
+          throw invalid(`${label}: image was not admitted (internal admission order error)`)
+        }
+        return { type: 'image', attachment: ref }
+      })
       if (blocks.length === 0) blocks.push({ type: 'text', text: '' })
       messages.push(createUserMessage({ content: blocks, source: { kind: 'user' } }))
       continue
