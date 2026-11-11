@@ -286,7 +286,9 @@ export function chatToGenerateOptions(
         if (part.type === 'text') return { type: 'text', text: part.text }
         const ref = resolveImage?.(part.dataUrl)
         if (!ref) {
-          throw invalid(`${label}: image was not admitted (internal admission order error)`)
+          // 无 resolver 或未准入：保留占位文本块维持顺序，data URL 已收集，
+          // 由调用方准入后带 resolver 重新转换构造 ImageBlock。
+          return { type: 'text', text: '[unsupported image]' }
         }
         return { type: 'image', attachment: ref }
       })
