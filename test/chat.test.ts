@@ -200,6 +200,18 @@ test('unsupported generation parameters are rejected explicitly', () => {
   }
 })
 
+test('user and metadata are accepted silently as audit-only fields', () => {
+  // 无行为承诺的附属字段：静默接受并丢弃，防止发送默认字段的客户端报错
+  const accepted = convert({
+    messages: [{ role: 'user', content: 'hi' }],
+    user: 'user-1234',
+    metadata: { session_id: 'sess-42' },
+  })
+  assert.equal(accepted.options.messages.length, 1)
+  assert.equal('user' in accepted.options, false)
+  assert.equal('metadata' in accepted.options, false)
+})
+
 test('reasoning_effort passes through verbatim; only type is validated', () => {
   // 注册表档位（含 max/xhigh/off）与任意字符串一律透传，由 adapter 按模型表过滤
   for (const effort of ['low', 'medium', 'high', 'xhigh', 'max', 'off', 'minimal', 'none', 'ultra']) {

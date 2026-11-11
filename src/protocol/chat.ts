@@ -35,7 +35,11 @@ export interface ChatConversion {
 /** 图片引用解析：data URL → 已准入的附件引用（由调用方在转换前完成准入）。 */
 export type ImageRefResolver = (dataUrl: string) => ImageAttachmentRef | undefined
 
-/** 网关无映射能力、收到即 400 的顶层生成控制参数。 */
+/**
+ * 网关无映射能力、收到即 400 的顶层生成控制参数。这些参数的语义在
+ * 上游采样/logits/输出契约层生效，CLI wire 无对应字段，网关层也无法
+ * 无损模拟；静默丢弃会让调用方误以为参数生效。
+ */
 const UNSUPPORTED_PARAMS: readonly string[] = [
   'top_p',
   'presence_penalty',
@@ -48,8 +52,6 @@ const UNSUPPORTED_PARAMS: readonly string[] = [
   'parallel_tool_calls',
   'stop',
   'stop_sequences',
-  'user',
-  'metadata',
 ]
 
 interface ChatMessage {
@@ -189,6 +191,9 @@ export function chatToGenerateOptions(
   if (body.store === true) {
     throw invalid('store:true is not supported by this stateless gateway')
   }
+
+  // user / metadata：终端用户标识与存储附属元数据，不承诺任何生成行为，
+  // 网关无状态亦不审计，静默接受并丢弃（兼容发送默认字段的客户端）。
 
   // Tool declarations: function tools only.
   let tools: ToolSchema[] | undefined
