@@ -22,6 +22,7 @@ import type { AdapterConfig, GatewayError } from './commandcode.ts'
 import type { GatewayConfig } from './config.ts'
 import { admitImageDataUrls } from './images.ts'
 import { ImageRequestError } from './images.ts'
+import { FALLBACK_MODEL_IDS } from './models.ts'
 import { chatToGenerateOptions, isChatRequestError } from './protocol/chat.ts'
 import { aggregateToChatJson } from './protocol/complete.ts'
 import { StreamFailure } from './protocol/output.ts'
@@ -210,6 +211,7 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
       }
       return
     }
+
 
     if (url !== '/v1/chat/completions' || method !== 'POST') {
       respondError(res, 404, `unknown route ${method} ${url}`)
@@ -452,32 +454,5 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** 固定兜底目录（proxy 锁定版内置模型表）；M6 替换为可配置实现。 */
-const FALLBACK_MODELS: { id: string }[] = [
-  { id: 'claude-sonnet-4-6' },
-  { id: 'claude-opus-4-8' },
-  { id: 'claude-opus-4-7' },
-  { id: 'claude-haiku-4-5-20251001' },
-  { id: 'gpt-5.5' },
-  { id: 'gpt-5.4' },
-  { id: 'gpt-5.4-mini' },
-  { id: 'gpt-5.3-codex' },
-  { id: 'deepseek/deepseek-v4-pro' },
-  { id: 'deepseek/deepseek-v4-flash' },
-  { id: 'moonshotai/Kimi-K2.6' },
-  { id: 'Kimi-K2.5' },
-  { id: 'zai-org/GLM-5.1' },
-  { id: 'GLM-5' },
-  { id: 'MiniMaxAI/MiniMax-M3' },
-  { id: 'MiniMax-M2.7' },
-  { id: 'MiniMax-M2.5' },
-  { id: 'Qwen/Qwen3.6-Max-Preview' },
-  { id: 'Qwen3.6-Plus' },
-  { id: 'Qwen3.7-Max' },
-  { id: 'stepfun/Step-3.7-Flash' },
-  { id: 'Step-3.5-Flash' },
-  { id: 'xiaomi/mimo-v2.5-pro' },
-  { id: 'mimo-v2.5' },
-  { id: 'google/gemini-3.5-flash' },
-  { id: 'gemini-3.1-flash-lite' },
-]
+/** 固定兜底目录（proxy 锁定版内置模型表）。 */
+const FALLBACK_MODELS: { id: string }[] = FALLBACK_MODEL_IDS.map((id) => ({ id }))

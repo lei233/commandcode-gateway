@@ -5,6 +5,7 @@
 import { resolve } from 'node:path'
 
 import { loadConfig } from './config.ts'
+import { resolveModelCatalog } from './models.ts'
 import { startGateway } from './server.ts'
 import type { AdapterConfig } from './commandcode.ts'
 
@@ -15,7 +16,11 @@ async function main(): Promise<void> {
     workingDir: config.workingDir,
     modelsCachePath: config.modelsCachePath,
   }
-  const gateway = await startGateway({ config, adapter })
+  const gateway = await startGateway({
+    config,
+    adapter,
+    listModels: (apiKey, signal) => resolveModelCatalog(config, adapter, apiKey, signal).then((ids) => ids.map((id) => ({ id }))),
+  })
   process.stdout.write(`commandcode-gateway listening on ${gateway.address.host}:${gateway.address.port}\n`)
 
   let closing = false
