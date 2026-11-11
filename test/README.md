@@ -1,20 +1,26 @@
-# 后续验收范围
+# 验收范围与覆盖情况
 
-当前尚无测试实现。后续功能编码依据已确认架构，应包含以下验收：
+离线测试（`npm test`，mock 上游 + 合成 `user_` 凭据）已完成以下验收；真实上游验收走 `npm run test:live`（需 `.env`，默认不执行）。
 
-- Chat JSON 与 SSE 文本输出、推理内容、用量及结束顺序。
-- 生成接口 Authorization / x-api-key 的凭据归一、前缀兼容、冲突和缺失。
-- 常用参数实际到达 adapter 发出的请求，不支持的生成控制参数明确报错；图片 `detail` 按已确认兼容规则接收但不映射上游。
-- 工具调用 ID 保持、多个调用、乱序回填、缺失或重复回填、两轮闭环。
-- 用户消息 data URL 图片、多图与文本顺序、DSH 附件接口所需的校验及请求版本生成、图片字节实际进入 adapter 发出的请求。
-- HTTP(S) 外链图片返回 400，Chat 工具结果保持文本，首版不实现 Responses 工具截图处理。
-- 图片只在请求内存中持有，正常完成、异常和取消后释放。
-- SSE 首个可输出事件前保留 JSON 错误和 HTTP 状态，开流后的错误帧正常送达并关闭，失败路径不追加 `[DONE]`。
-- 已开流后，上游数据未产生可见输出时发送注释心跳；不依赖额外固定间隔心跳或网关重试。
-- 上游 401/403/429、Retry-After、超时、缺少终态、半段工具参数。
-- 客户端断开、背压、请求体超限、服务关闭和并发请求隔离。
-- 配置覆盖顺序、参考项目默认值、流式/非流式空闲超时到 adapter 的映射，确保空闲超时未误变成整请求期限。
-- 模型列表的全局 5 分钟缓存、过期刷新、无 Key/关闭动态发现/失败或空目录的固定列表兜底；目录接口不承担 Key 有效性校验，生成不依赖目录命中。
-- 健康检查不计入可选的在途请求限制。
+| 验收项 | 覆盖测试 |
+| --- | --- |
+| Chat JSON 与 SSE 文本输出、推理内容、用量及结束顺序 | `complete.test.ts`、`sse.test.ts`、`server.test.ts` |
+| 凭据归一、前缀兼容、冲突和缺失 | `auth.test.ts`、`server.test.ts`（401/401 双头 400） |
+| 常用参数到达 adapter 请求、不支持参数明确报错、`detail` 兼容接收不映射 | `commandcode.test.ts`（params 嵌套断言）、`chat.test.ts` |
+| 工具调用 ID 保持、多调用、乱序回填、缺失/重复回填、两轮闭环 | `chat.test.ts`、`shutdown.test.ts`（两轮闭环） |
+| data URL 图片、多图与文本顺序、附件校验与请求版本生成、字节进入上游请求 | `images.test.ts`、`chat.test.ts` |
+| HTTP(S) 外链 400、工具结果保持文本 | `chat.test.ts` |
+| 图片只在请求内存中持有（请求结束释放） | `images.test.ts`（store 作用域） |
+| SSE 首帧前 JSON 错误、开流后错误帧正常关闭、失败无 `[DONE]` | `server.test.ts`、`shutdown.test.ts` |
+| 开流后静默事件触发注释心跳 | `shutdown.test.ts` |
+| 上游 401/403/429、超时、缺终态、半段工具参数 | `commandcode.test.ts`（映射表）、`complete.test.ts`、`sse.test.ts`、`server.test.ts` |
+| 客户端断开、背压、请求体超限、服务关闭、并发隔离 | `server.test.ts`、`shutdown.test.ts` |
+| 配置覆盖顺序、默认值、空闲超时映射 | `config.test.ts`、`commandcode.test.ts` |
+| 模型目录缓存/过期/兜底、无 Key/关闭动态/失败路径 | `models.test.ts` |
+| 健康检查不计入在途限制 | `server.test.ts` |
 
-日常测试使用合成凭据与模拟上游。真实上游验收单独显式执行；当前尚未执行真实调用。
+实现期间确认的行为修正（与架构文档原表述的差异）：
+
+- `stop` 参数：CLI wire 格式无对应字段（adapter `UNSUPPORTED_OPTION`），网关准入时 400，不静默丢弃。
+- `reasoning_effort`：仅接受 `low`/`medium`/`high` 显式档位。
+- `/provider/v1/models` 响应为 OpenAI 风格 `{object:'list', data:[...]}`；adapter 自带进程级缓存与磁盘持久化，网关层 5 分钟缓存叠加其上。
