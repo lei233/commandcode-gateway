@@ -45,6 +45,8 @@ const UNSUPPORTED_PARAMS: readonly string[] = [
   'seed',
   'response_format',
   'parallel_tool_calls',
+  'stop',
+  'stop_sequences',
   'user',
   'store',
   'metadata',
@@ -226,17 +228,8 @@ export function chatToGenerateOptions(body: unknown, model: string): ChatConvers
     }
   }
 
-  // Stop sequences: string or array of strings, mapped to string[].
-  let stop: string[] | undefined
-  if (body.stop !== undefined && body.stop !== null) {
-    if (typeof body.stop === 'string') {
-      stop = [body.stop]
-    } else if (Array.isArray(body.stop) && body.stop.every((item): item is string => typeof item === 'string')) {
-      stop = body.stop
-    } else {
-      throw invalid('stop must be a string or an array of strings')
-    }
-  }
+  // Stop 序列：CLI wire 格式无对应字段，adapter 以 UNSUPPORTED_OPTION 拒绝；
+  // 网关在准入时提前返回同等明确的 400（UNSUPPORTED_PARAMS 已含 'stop'）。
 
   // Reasoning effort: explicit level names mapped verbatim.
   let reasoningEffort: ReturnType<typeof ReasoningEffortId> | undefined
@@ -350,7 +343,6 @@ export function chatToGenerateOptions(body: unknown, model: string): ChatConvers
     ...(tools !== undefined && tools.length > 0 ? { tools } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(body.temperature !== undefined ? { temperature: body.temperature as number } : {}),
-    ...(stop !== undefined ? { stop } : {}),
     ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
   }
   return { options, imageDataUrls }

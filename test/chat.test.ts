@@ -175,12 +175,10 @@ test('maps sampling parameters onto GenerateOptions fields', () => {
     messages: [{ role: 'user', content: 'hi' }],
     temperature: 0.5,
     max_tokens: 512,
-    stop: ['END'],
     reasoning_effort: 'low',
   })
   assert.equal(options.temperature, 0.5)
   assert.equal(options.maxTokens, 512)
-  assert.deepEqual(options.stop, ['END'])
   assert.equal(options.reasoningEffort, 'low')
 })
 
@@ -194,10 +192,10 @@ test('max_completion_tokens wins over max_tokens', () => {
 })
 
 test('unsupported generation parameters are rejected explicitly', () => {
-  for (const param of ['top_p', 'presence_penalty', 'seed', 'response_format', 'parallel_tool_calls']) {
+  for (const param of ['top_p', 'presence_penalty', 'seed', 'response_format', 'parallel_tool_calls', 'stop']) {
     expectInvalid({
       messages: [{ role: 'user', content: 'hi' }],
-      [param]: param === 'top_p' ? 1 : param === 'response_format' ? { type: 'text' } : 'x',
+      [param]: param === 'top_p' ? 1 : param === 'response_format' ? { type: 'text' } : param === 'parallel_tool_calls' ? true : 'x',
     }, new RegExp(`${param} is not supported`))
   }
 })
