@@ -51,3 +51,30 @@ npm start
 图片处理依赖 `sharp`（请求版本重编码）。DSH adapter 与消息层依赖沿用参考项目的锁定版本：`@mars-sea/dsh-commandcode-provider@0.17.4`、`@deepseek-ai/dsh-llm@0.2.2-rc.1`。
 
 架构边界和交接状态见 [architecture.md](docs/architecture.md)。
+
+## VPS 部署（Docker）
+
+前置：Docker Engine（含 compose 插件）。构建在 VPS 上完成，无需镜像仓库。
+
+```sh
+git clone <repo-url> && cd commandcode-gateway
+docker compose up -d --build
+curl -s http://127.0.0.1:3050/health   # {"status":"ok"}
+```
+
+- 镜像为多阶段构建：测试阶段跑 `typecheck` + 全量离线测试（进程内 mock 上游，不需要网络与真实凭据），通过才进入运行阶段；运行阶段以非 root 用户仅装生产依赖。
+- 基础镜像默认 `node:24-alpine`；若镜像源受限或已有预拉取镜像，可 `docker build --build-arg NODE_IMAGE=node:24.x-bookworm-slim ...` 覆盖（glibc 变体的 sharp 二进制同样在 lockfile 内）。
+- 容器只绑 `127.0.0.1:3050`，不对公网暴露，由宿主机既有反代转发；网关自身零凭据（Key 逐请求透传），无需注入任何 secret。
+- `docker stop` 发出的 SIGTERM 走内建优雅关停（5s drain 后退出）；重启策略 `unless-stopped`。
+
+### 对接反代
+
+- SSE 流式转发需关闭缓冲：nginx 设 `proxy_buffering off`；Caddy 反代默认即流式，必要时 `flush_interval -1`。
+- 读超时建议 ≥ 300s，覆盖流式空闲上限（`CC_STREAM_IDLE_MS` 默认 30s，上游长回复期间由心跳帧保活）。
+- 若反代本身是 Docker 容器：去掉 `ports`，改为共享 Docker 网络按服务名 `commandcode-gateway:3050` 访问。
+
+### 运维
+
+- 更新：`git pull && docker compose up -d --build`（旧容器优雅替换）。
+- 日志：`docker compose logs -f`。
+- 调优：在 `compose.yaml` 的 `environment` 覆盖 `CC_*` 变量（完整清单见 [architecture.md](docs/architecture.md) 方案四）；`HOST`/`PORT` 同样可覆盖。

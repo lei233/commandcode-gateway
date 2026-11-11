@@ -1,0 +1,12 @@
+services:
+  commandcode-gateway:
+    build: .
+    image: commandcode-gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3050:3050"
+    # 凭据逐请求透传，无需注入任何 secret。
+    # 按需覆盖调优（完整清单见 docs/architecture.md 方案四）：
+    # environment:
+    #   CC_MAX_BODY_MB: 100
+    #   CC_STREAM_IDLE_MS: 30000

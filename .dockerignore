@@ -5,3 +5,5 @@ node_modules
 .cache
 coverage
 *.log
+.zcode
+.DS_Store
