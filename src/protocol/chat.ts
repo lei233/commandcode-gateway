@@ -51,7 +51,6 @@ const UNSUPPORTED_PARAMS: readonly string[] = [
   'stop',
   'stop_sequences',
   'user',
-  'store',
   'metadata',
 ]
 
@@ -184,6 +183,12 @@ export function chatToGenerateOptions(
     if (body[param] !== undefined) {
       throw invalid(`${param} is not supported by this gateway`)
     }
+  }
+
+  // store：网关无状态，store:false 恰是本网关行为，静默接受；
+  // store:true 要求服务端存储，无法兑现，明确拒绝。
+  if (body.store === true) {
+    throw invalid('store:true is not supported by this stateless gateway')
   }
 
   // Tool declarations: function tools only.

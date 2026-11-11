@@ -237,6 +237,13 @@ test('image parts are only accepted in user messages', () => {
   }, /not supported/)
 })
 
+test('store:false is accepted as stateless default; store:true is rejected', () => {
+  // OpenAI 生态客户端（Codex 等）默认发 store:false，必须放行
+  const accepted = convert({ messages: [{ role: 'user', content: 'hi' }], store: false })
+  assert.equal(accepted.options.messages.length, 1)
+  expectInvalid({ messages: [{ role: 'user', content: 'hi' }], store: true }, /store:true is not supported/)
+})
+
 test('n>1, empty messages, and unknown roles are rejected', () => {
   expectInvalid({ n: 2, messages: [{ role: 'user', content: 'x' }] }, /single candidate/)
   expectInvalid({ messages: [] }, /must not be empty/)
