@@ -35,8 +35,6 @@ export interface ChatConversion {
 /** 图片引用解析：data URL → 已准入的附件引用（由调用方在转换前完成准入）。 */
 export type ImageRefResolver = (dataUrl: string) => ImageAttachmentRef | undefined
 
-const MAX_TOOL_CALL_ID_LENGTH = 64
-
 /** 网关无映射能力、收到即 400 的顶层生成控制参数。 */
 const UNSUPPORTED_PARAMS: readonly string[] = [
   'top_p',
@@ -81,8 +79,11 @@ function parseToolCalls(raw: unknown, message: string): Array<{ id: string; name
   for (const call of raw) {
     if (!isObject(call)) throw invalid(`${message}: tool_calls entries must be objects`)
     const id = call.id
-    if (typeof id !== 'string' || id.length === 0 || id.length > MAX_TOOL_CALL_ID_LENGTH) {
-      throw invalid(`${message}: tool call id must be a non-empty string of at most ${MAX_TOOL_CALL_ID_LENGTH} characters`)
+    // 仅校验非空（空 id 无法与 tool_result 配对，是结构性的）；长度上限
+    // 不设——超长 id 由 adapter 重映射为短别名（wireToolCallIds），这是
+    // 其为跨 provider 会话迁移实现的正式能力，网关不提前拒绝。
+    if (typeof id !== 'string' || id.length === 0) {
+      throw invalid(`${message}: tool call id must be a non-empty string`)
     }
     const fn = call.function
     if (!isObject(fn) || typeof fn.name !== 'string' || fn.name.length === 0) {
@@ -233,10 +234,12 @@ export function chatToGenerateOptions(
     maxTokens = explicit
   }
 
-  // Temperature: finite number, 0..2 (OpenAI range), mapped verbatim.
+  // Temperature：仅校验有限数字（挡 NaN/Infinity/非数字），值透传；
+  // 范围是否可接受由上游判定（各模型接受的区间不同，adapter 也不做
+  // 范围校验；对温度固定的模型 adapter 直接省略字段），网关不复制该判定。
   if (body.temperature !== undefined) {
-    if (typeof body.temperature !== 'number' || !Number.isFinite(body.temperature) || body.temperature < 0 || body.temperature > 2) {
-      throw invalid('temperature must be a number between 0 and 2')
+    if (typeof body.temperature !== 'number' || !Number.isFinite(body.temperature)) {
+      throw invalid('temperature must be a finite number')
     }
   }
 

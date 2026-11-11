@@ -11,7 +11,7 @@
 - 对外协议与鉴权参考 `MAXeaglet/commandcode-proxy`；上游生成与模型发现统一经 DSH CommandCode adapter（`protocol: 'cli'`）。
 - 消息转换与输出处理参考本地 `cpa-commandcode-provider` Worker。
 - 鉴权：`Authorization: Bearer ...` / `x-api-key` 提取 `user_...`（`token_user_` 等前缀兼容）；归一后双头冲突 400，缺失 401。凭据每请求透传，网关不持有 Key。
-- 支持的生成参数：`temperature`、`max_tokens`/`max_completion_tokens`、`reasoning_effort`（任意非空字符串透传，档位是否生效由 adapter 按模型注册表过滤）、`tool_choice`（auto/none）；`store:false` 静默接受（网关无状态）；`stop` 与其余无映射能力的参数明确 400（CLI wire 格式无 stop 字段）。
+- 支持的生成参数：`temperature`（任意有限数字透传，范围由上游判定）、`max_tokens`/`max_completion_tokens`、`reasoning_effort`（任意非空字符串透传，档位是否生效由 adapter 按模型注册表过滤）、`tool_choice`（auto/none）；`store:false` 静默接受（网关无状态）；`stop` 与其余无映射能力的参数明确 400（CLI wire 格式无 stop 字段）。工具调用 id 不设长度上限，超长 id 由 adapter 重映射为短别名。
 - 图片采用请求级内存附件（sharp 解码校验 + 长边 1568/1MiB 请求版本重编码）；`image_url.detail` 兼容接收但不映射上游。
 - 配置采用内置默认值、`config.json`、环境变量依次覆盖；仓库预设监听 `0.0.0.0:3050`。
 - 模型目录采用全局 5 分钟内存缓存及固定列表兜底，不承担 Key 有效性校验。

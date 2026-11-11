@@ -211,8 +211,34 @@ test('reasoning_effort passes through verbatim; only type is validated', () => {
   expectInvalid({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: '' }, /reasoning_effort must be a non-empty string/)
 })
 
-test('invalid temperature is still rejected', () => {
-  expectInvalid({ messages: [{ role: 'user', content: 'hi' }], temperature: 3 }, /temperature/)
+test('temperature passes through any finite number; only type is validated', () => {
+  // 范围由上游判定（各模型区间不同，adapter 不做范围校验）
+  for (const temperature of [0, 0.5, 1.5, 3, 100]) {
+    const { options } = convert({ messages: [{ role: 'user', content: 'hi' }], temperature })
+    assert.equal(options.temperature, temperature, String(temperature))
+  }
+  expectInvalid({ messages: [{ role: 'user', content: 'hi' }], temperature: 'hot' }, /temperature must be a finite number/)
+})
+
+test('overlong tool call ids pass through for adapter aliasing', () => {
+  // 超长 id 由 adapter 重映射为短别名（跨 provider 会话迁移的正式能力）
+  const longId = `call_${'x'.repeat(120)}`
+  const { options } = convert({
+    messages: [
+      { role: 'user', content: 'run' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: longId, type: 'function', function: { name: 'one', arguments: '{}' } }],
+      },
+      { role: 'tool', tool_call_id: longId, content: 'ok' },
+    ],
+  })
+  const assistant = options.messages[1]
+  assert.ok(assistant && assistant.role === 'assistant')
+  const call = assistant.content.find((b) => b.type === 'tool-call')
+  assert.ok(call && call.type === 'tool-call')
+  assert.equal(call.id, longId, 'id preserved verbatim')
 })
 
 test('image_url data URLs are collected in order; HTTP(S) links are rejected', () => {
