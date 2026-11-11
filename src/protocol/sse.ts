@@ -159,6 +159,7 @@ export class ChatSseEncoder {
         break
       }
       case 'finish': {
+        this.ensureRole()
         const reason = finishToChatReason(chunk.reason as FinishReason)
         if (reason === null) {
           this.failed = true

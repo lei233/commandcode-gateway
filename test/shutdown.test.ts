@@ -1,10 +1,18 @@
 import { strict as assert } from 'node:assert'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { connect as netConnect } from 'node:net'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 
 import { startGateway } from '../src/server.ts'
 import type { GatewayConfig } from '../src/config.ts'
 import { createRecordingUpstream } from './helpers/upstream-mock.ts'
+
+/** 每文件独立临时目录，退出时统一清理（不向 /tmp 泄漏缓存文件）。 */
+const TMP = mkdtempSync(join(tmpdir(), 'ccgw-'))
+after(() => rmSync(TMP, { recursive: true, force: true }))
+const cachePath = (name: string): string => join(TMP, `${name}-${crypto.randomUUID()}.json`)
 
 const BASE_CONFIG: GatewayConfig = {
   host: '127.0.0.1',
@@ -19,7 +27,7 @@ const BASE_CONFIG: GatewayConfig = {
   modelRefreshIntervalMs: 300_000,
   apiBase: 'https://upstream.example',
   workingDir: '/workspace',
-  modelsCachePath: `/tmp/ccgw-shutdown-${process.pid}-${crypto.randomUUID()}.json`,
+  modelsCachePath: cachePath('shutdown'),
 }
 
 async function withServer(
@@ -29,7 +37,7 @@ async function withServer(
 ): Promise<void> {
   const gateway = await startGateway({
     config: { ...BASE_CONFIG, ...configOverrides },
-    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: `/tmp/ccgw-sd-${crypto.randomUUID()}.json`, fetchImpl: upstream.fetchImpl },
+    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: cachePath('sd'), fetchImpl: upstream.fetchImpl },
   })
   try {
     await run(`http://127.0.0.1:${gateway.address.port}`)
@@ -47,6 +55,33 @@ function chatBody(overrides: Record<string, unknown> = {}): string {
 }
 
 const AUTH = { authorization: 'Bearer user_test-key', 'content-type': 'application/json' }
+
+// 回归看门狗：优雅关停若未释放空闲 keep-alive 连接，进程会被半死连接
+// 拖满 keepAliveTimeout（65s）。unref 保证它不拖住正常退出；连接泄漏时
+// 事件循环仍存活，本定时器照常触发并以退出码 1 终止测试进程。
+const watchdog = setTimeout(() => {
+  console.error('regression: process outlived graceful close by 60s (idle connections not released)')
+  process.exit(1)
+}, 60_000)
+watchdog.unref()
+
+test('graceful shutdown releases idle keep-alive connections', async () => {
+  const upstream = createRecordingUpstream([
+    { type: 'text-delta', text: 'bye' },
+    { type: 'finish', finishReason: 'stop' },
+  ])
+  const gateway = await startGateway({
+    config: { ...BASE_CONFIG },
+    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: cachePath('sd'), fetchImpl: upstream.fetchImpl },
+  })
+  const base = `http://127.0.0.1:${gateway.address.port}`
+  // 正常完成的请求：连接回到 keep-alive 空闲池，不再计入在途
+  const response = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers: AUTH, body: chatBody() })
+  assert.equal(response.status, 200)
+  await response.text()
+  const outcome = await gateway.close(300)
+  assert.equal(outcome, 'clean')
+})
 
 test('two-round tool closure over the server keeps ids', async () => {
   // 上游按 history 有无 role:tool 区分两轮
@@ -190,7 +225,7 @@ test('backpressure pauses upstream reads until the client drains', async () => {
   }
   const gateway = await startGateway({
     config: { ...BASE_CONFIG },
-    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: `/tmp/ccgw-bp-${crypto.randomUUID()}.json`, fetchImpl: upstream.fetchImpl },
+    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: cachePath('bp'), fetchImpl: upstream.fetchImpl },
   })
   const port = gateway.address.port
   // raw socket 手写 HTTP（http.request 自动排水产生不了真背压）
@@ -227,7 +262,7 @@ test('graceful shutdown waits for in-flight and aborts after grace', async () =>
   }
   const gateway = await startGateway({
     config: { ...BASE_CONFIG },
-    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: `/tmp/ccgw-gs-${crypto.randomUUID()}.json`, fetchImpl: upstream.fetchImpl },
+    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: cachePath('gs'), fetchImpl: upstream.fetchImpl },
   })
   const base = `http://127.0.0.1:${gateway.address.port}`
   const inFlight = fetch(`${base}/v1/chat/completions`, { method: 'POST', headers: AUTH, body: chatBody() }).catch(() => undefined)

@@ -1,17 +1,17 @@
 /**
  * 模型目录：全局内存缓存 + TTL 刷新 + 固定列表兜底。
  *
- * 缓存不按 Key 隔离（方案五），内容为目录元数据，不持有请求凭据或
- * adapter 实例。未命中有效缓存时经当前请求的 adapter 拉取；失败、空目录、
- * 无 Key 或关闭动态发现时返回固定列表。目录接口不承担 Key 有效性校验，
- * 生成请求不以目录命中为前提。
+ * 缓存不按 Key 隔离（见 docs/architecture.md），内容为目录元数据，
+ * 不持有请求凭据或 adapter 实例。未命中有效缓存时经当前请求的 adapter
+ * 拉取；失败、空目录、无 Key 或关闭动态发现时返回固定列表。目录接口
+ * 不承担 Key 有效性校验，生成请求不以目录命中为前提。
  */
 
 import { listCommandCodeModels } from './commandcode.ts'
 import type { AdapterConfig } from './commandcode.ts'
 import type { GatewayConfig } from './config.ts'
 
-/** proxy 锁定版内置模型表（固定兜底目录）。 */
+/** 内置固定模型表（动态目录不可用时的兜底）。 */
 export const FALLBACK_MODEL_IDS: readonly string[] = [
   'claude-sonnet-4-6',
   'claude-opus-4-8',

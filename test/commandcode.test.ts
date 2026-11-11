@@ -1,5 +1,8 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, test } from 'node:test'
 
 import { listCommandCodeModels, mapAdapterError, streamCommandCode } from '../src/commandcode.ts'
 import { LlmError } from '../src/runtime.ts'
@@ -8,10 +11,15 @@ import { LlmError } from '../src/runtime.ts'
 // NDJSON 事件流应答，离线钉住请求形状（cli 协议、每请求 key、拒绝重定向、
 // 空闲超时注入、参数到达）与错误映射表。
 
+/** 每文件独立临时目录，退出时统一清理（不向 /tmp 泄漏缓存文件）。 */
+const TMP = mkdtempSync(join(tmpdir(), 'ccgw-'))
+after(() => rmSync(TMP, { recursive: true, force: true }))
+const cachePath = (name: string): string => join(TMP, `${name}-${crypto.randomUUID()}.json`)
+
 const config = {
   apiBase: 'https://upstream.example',
   workingDir: '/workspace',
-  modelsCachePath: '/tmp/ccgw-models-cache.json',
+  modelsCachePath: cachePath('models-cache'),
 }
 
 interface RecordedFetch {
@@ -129,7 +137,7 @@ test('listCommandCodeModels queries the provider models endpoint', async () => {
   const fetchImpl = okFetch([])
   const models = await listCommandCodeModels({
     ...config,
-    modelsCachePath: `/tmp/ccgw-test-models-${crypto.randomUUID()}.json`,
+    modelsCachePath: cachePath('test-models'),
     fetchImpl,
   }, {
     apiKey: 'user_m',

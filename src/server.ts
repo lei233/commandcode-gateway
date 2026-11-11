@@ -46,7 +46,7 @@ export interface ServerOptions {
   config: GatewayConfig
   /** adapter 固定事实；测试注入 fetchImpl。 */
   adapter: AdapterConfig
-  /** 模型目录查询（M6 注入；缺省固定列表）。 */
+  /** 模型目录查询（main 注入；缺省固定列表）。 */
   listModels?: (apiKey: string | undefined, signal: AbortSignal) => Promise<{ id: string }[]>
 }
 
@@ -185,8 +185,14 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
     const url = req.url ?? '/'
     const method = req.method ?? ''
 
-    // /health：不计入在途限制
+    // /health：不计入在途限制；关停窗口内报告 shutting_down，
+    // 避免健康检查语义与新请求 503 矛盾
     if (url === '/health') {
+      if (shuttingDown) {
+        res.writeHead(503, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ status: 'shutting_down' }))
+        return
+      }
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ status: 'ok' }))
       return
@@ -211,7 +217,6 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
       }
       return
     }
-
 
     if (url !== '/v1/chat/completions' || method !== 'POST') {
       respondError(res, 404, `unknown route ${method} ${url}`)
@@ -289,11 +294,15 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
       let imageStore: AttachmentStore | undefined
       if (conversion.imageDataUrls.length > 0) {
         try {
-          const admitted = await admitImageDataUrls(conversion.imageDataUrls)
+          const admitted = await admitImageDataUrls(conversion.imageDataUrls, signal)
           imageStore = admitted.store
           const byUrl = new Map(conversion.imageDataUrls.map((url, index) => [url, admitted.refs[index]!]))
           conversion = chatToGenerateOptions(body, model, (dataUrl) => byUrl.get(dataUrl))
         } catch (error) {
+          if (signal.aborted) {
+            res.destroy()
+            return
+          }
           if (error instanceof ImageRequestError) {
             respondError(res, 400, error.message)
             return
@@ -317,9 +326,7 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
       if (!stream) {
         try {
           const result = await aggregateToChatJson(iterable, { model })
-          if (!res.headersSent) {
-            res.writeHead(200, { 'content-type': JSON_CONTENT_TYPE })
-          }
+          res.writeHead(200, { 'content-type': JSON_CONTENT_TYPE })
           res.end(JSON.stringify(result))
         } catch (error) {
           const gatewayError = toGatewayError(error)
@@ -418,6 +425,8 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
         close: (graceMs: number) =>
           new Promise((resolveClose) => {
             shuttingDown = true
+            // 关停即清掉空闲 keep-alive 连接，否则它们会挂满 keepAliveTimeout
+            server.closeIdleConnections()
             server.close(() => resolveClose('clean'))
             if (active.size === 0) {
               resolveClose('clean')
@@ -427,6 +436,8 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
               for (const scope of active) {
                 if (!scope.controller.signal.aborted) scope.controller.abort('shutdown')
               }
+              // 宽限期到：强制断开所有连接（含半死连接），不让进程退出被拖住
+              server.closeAllConnections()
               resolveClose('forced')
             }, graceMs)
             const poll = setInterval(() => {
@@ -454,5 +465,5 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** 固定兜底目录（proxy 锁定版内置模型表）。 */
+/** 固定兜底目录（内置模型表）。 */
 const FALLBACK_MODELS: { id: string }[] = FALLBACK_MODEL_IDS.map((id) => ({ id }))

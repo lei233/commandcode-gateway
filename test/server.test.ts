@@ -1,9 +1,17 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, test } from 'node:test'
 
 import { startGateway } from '../src/server.ts'
 import type { GatewayConfig } from '../src/config.ts'
 import { createRecordingUpstream } from './helpers/upstream-mock.ts'
+
+/** 每文件独立临时目录，退出时统一清理（不向 /tmp 泄漏缓存文件）。 */
+const TMP = mkdtempSync(join(tmpdir(), 'ccgw-'))
+after(() => rmSync(TMP, { recursive: true, force: true }))
+const cachePath = (name: string): string => join(TMP, `${name}-${crypto.randomUUID()}.json`)
 
 const BASE_CONFIG: GatewayConfig = {
   host: '127.0.0.1',
@@ -18,7 +26,7 @@ const BASE_CONFIG: GatewayConfig = {
   modelRefreshIntervalMs: 300_000,
   apiBase: 'https://upstream.example',
   workingDir: '/workspace',
-  modelsCachePath: `/tmp/ccgw-server-test-${process.pid}-${crypto.randomUUID()}.json`,
+  modelsCachePath: cachePath('server'),
 }
 
 async function withServer(

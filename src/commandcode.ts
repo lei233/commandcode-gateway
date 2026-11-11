@@ -4,7 +4,7 @@
  * 每次调用新建 adapter：`protocol: 'cli'` 强制 CLI 传输、`resolveApiKey`
  * 闭包持有当前请求凭据（透传方案，无轮换）、`noRedirectFetch` 拒绝重定向。
  * 流式/非流式空闲超时由调用方按请求 `stream` 选用后经 `streamIdleTimeoutMs`
- * 注入；`requestTimeoutMs` 首字节超时沿用 adapter 默认 300s。
+ * 注入；`requestTimeoutMs` 固定 300s 首字节超时。
  * 生成与模型发现统一经过 adapter；重试由 adapter 管理，网关不叠加。
  * 错误映射为结构化 GatewayError：401/403/429 保留上游状态码，
  * UNSUPPORTED_CONTENT 映射 400，超时 504，协议失败 502；消息有界不含凭据。
@@ -54,7 +54,7 @@ function connectionOptions(config: AdapterConfig, streamIdleTimeoutMs: number): 
     apiBase: config.apiBase,
     workingDir: config.workingDir,
     modelsCachePath: config.modelsCachePath,
-    // 首字节超时沿用 adapter 默认（300s）；空闲超时是请求级语义。
+    // 固定 300s 首字节超时；空闲超时是请求级语义。
     requestTimeoutMs: 300_000,
     streamIdleTimeoutMs,
     maxOutputTokens: 0,
@@ -130,7 +130,9 @@ export function mapAdapterError(error: unknown): GatewayError {
     const failure = error.failure
     const status = failure.status
     let httpStatus = 502
-    if (status === 401 || status === 403 || status === 429) httpStatus = status
+    // 401/403/404/429 直接透传：凭据、模型不存在与限流对客户端语义稳定，
+    // 404 透传可让客户端停止重试必然失败的请求。
+    if (status === 401 || status === 403 || status === 404 || status === 429) httpStatus = status
     else if (error.code === 'UNSUPPORTED_CONTENT') httpStatus = 400
     else if (error.code === 'TIMEOUT' || /timed? ?out/i.test(failure.code)) httpStatus = 504
     const retryAfterSeconds = failure.providerRetryAfterMs !== undefined && failure.providerRetryAfterMs > 0
@@ -187,6 +189,7 @@ function boundedMessageFor(status: number): string {
     case 400: return 'the request content is not supported by the selected model'
     case 401: return 'commandcode rejected the credential'
     case 403: return 'commandcode refused the request'
+    case 404: return 'commandcode reported the model or endpoint as not found'
     case 429: return 'commandcode rate limited the request'
     case 504: return 'commandcode upstream timed out'
     default: return 'commandcode upstream request failed'

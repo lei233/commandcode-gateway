@@ -1,9 +1,17 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, test } from 'node:test'
 
 import { FALLBACK_MODEL_IDS, resetModelCache, resolveModelCatalog } from '../src/models.ts'
 import type { GatewayConfig } from '../src/config.ts'
 import { createRecordingUpstream } from './helpers/upstream-mock.ts'
+
+/** 每文件独立临时目录，退出时统一清理（不向 /tmp 泄漏缓存文件）。 */
+const TMP = mkdtempSync(join(tmpdir(), 'ccgw-'))
+after(() => rmSync(TMP, { recursive: true, force: true }))
+const cachePath = (name: string): string => join(TMP, `${name}-${crypto.randomUUID()}.json`)
 
 const CONFIG: GatewayConfig = {
   host: '127.0.0.1',
@@ -18,11 +26,11 @@ const CONFIG: GatewayConfig = {
   modelRefreshIntervalMs: 300_000,
   apiBase: 'https://upstream.example',
   workingDir: '/workspace',
-  modelsCachePath: `/tmp/ccgw-models-${crypto.randomUUID()}.json`,
+  modelsCachePath: cachePath('models'),
 }
 
 function adapterWith(fetchImpl: typeof fetch): Parameters<typeof resolveModelCatalog>[1] {
-  return { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: `/tmp/ccgw-ad-${crypto.randomUUID()}.json`, fetchImpl }
+  return { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: cachePath('ad'), fetchImpl }
 }
 
 test('dynamic discovery refreshes the global cache and serves later requests from it', async () => {

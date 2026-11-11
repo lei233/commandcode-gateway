@@ -1,6 +1,6 @@
 /**
  * 配置解析：内置默认值 → config.json → 环境变量，依次覆盖。
- * 资源限制沿用参考项目的环境变量配置方式；仓库 config.json 预设监听 0.0.0.0:3050。
+ * 资源限制经环境变量配置；仓库 config.json 预设监听 0.0.0.0:3050。
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

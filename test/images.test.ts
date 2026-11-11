@@ -1,5 +1,8 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, test } from 'node:test'
 
 import {
   IMAGE_LIMITS,
@@ -10,6 +13,10 @@ import {
 } from '../src/images.ts'
 
 import { chatToGenerateOptions } from '../src/protocol/chat.ts'
+
+/** 每文件独立临时目录，退出时统一清理（不向 /tmp 泄漏缓存文件）。 */
+const TMP = mkdtempSync(join(tmpdir(), 'ccgw-'))
+after(() => rmSync(TMP, { recursive: true, force: true }))
 
 /** sharp 生成真实 PNG 夹具。 */
 async function pngDataUrl(width: number, height: number): Promise<string> {
@@ -137,7 +144,7 @@ test('image bytes reach the adapter upstream request exactly once', async () => 
   }, 'claude-sonnet-4-6', () => byRef)
 
   const iterable = streamCommandCode(
-    { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: `/tmp/ccgw-img-${crypto.randomUUID()}.json`, fetchImpl },
+    { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: join(TMP, `img-${crypto.randomUUID()}.json`), fetchImpl },
     { apiKey: 'user_img', signal: new AbortController().signal },
     options,
     () => store,

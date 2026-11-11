@@ -35,6 +35,16 @@ async function main(): Promise<void> {
   }
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
+  // 进程级异常兜底：记录一行摘要后走优雅关停（closing 标志防重入），
+  // 避免长驻进程因任何一处漏抛直接退出。
+  process.on('uncaughtException', (error) => {
+    process.stderr.write(`uncaught exception: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`)
+    shutdown('uncaughtException')
+  })
+  process.on('unhandledRejection', (reason) => {
+    process.stderr.write(`unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}\n`)
+    shutdown('unhandledRejection')
+  })
 
   gateway.server.on('error', (error) => {
     process.stderr.write(`server error: ${error instanceof Error ? error.message : String(error)}\n`)

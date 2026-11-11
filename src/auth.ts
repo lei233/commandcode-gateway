@@ -1,7 +1,7 @@
 /**
  * 解析 Authorization / x-api-key 请求头，归一化当前请求的 CommandCode 凭据。
- * 提取规则参考 commandcode-proxy：在头值中匹配 `user_` 前缀 token，
- * `token_user_...` 等形式经由同一段子串匹配天然归一为 `user_...`。
+ * 在头值中匹配 `user_` 前缀 token，`token_user_...` 等形式经由同一段
+ * 子串匹配天然归一为 `user_...`。
  */
 
 /** 从单个头值中提取 `user_...` token；无匹配返回 undefined。 */

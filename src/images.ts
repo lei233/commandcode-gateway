@@ -5,9 +5,9 @@
  * 解码校验并取尺寸、构造请求级 AttachmentStore（内存 Map，请求结束即释放）。
  * adapter 通过 resolveAttachments 取 store，实际只调用 readImageRequest：
  * 按 target（长边 1568、编码后 ≤1MiB）缩放重编码，质量递减至预算内。
- * 首版拒绝 HTTP(S) 外链（chat.ts 准入时已 400）；image_url.detail 兼容
- * 接收但不映射上游。网关不额外设计独立的压缩/尺寸/数量策略，准入边界
- * 遵循 DSH 附件接口的 imageLimits。
+ * HTTP(S) 外链由 chat.ts 准入时返回 400；image_url.detail 兼容接收但不
+ * 映射上游。网关不额外设计独立的压缩/尺寸/数量策略，准入边界遵循 DSH
+ * 附件接口的 imageLimits。
  */
 
 import sharp from 'sharp'
@@ -34,7 +34,7 @@ export class ImageRequestError extends Error {
 
 const MEDIA_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
-/** 网关图片准入边界（对齐 vendor 默认 limits 的量级，个人部署）。 */
+/** 网关图片准入边界（个人部署量级）。 */
 export const IMAGE_LIMITS: ImageAttachmentLimits = {
   maxImageBytes: 10 * 1024 * 1024,
   maxImagesPerMessage: 8,
@@ -102,7 +102,7 @@ interface StoredEntry {
   bytes: Uint8Array
 }
 
-/** 请求级内存附件服务；结构化实现 + 边界 cast（vendor 测试实证模式）。 */
+/** 请求级内存附件服务；结构化实现 + 边界 cast。 */
 class InMemoryImageStore {
   private readonly entries = new Map<string, StoredEntry>()
   readonly imageLimits = IMAGE_LIMITS
@@ -162,8 +162,7 @@ class InMemoryImageStore {
       }
       output = result
     }
-    // 全部超预算时保留最小尝试（最后一档），行为对齐 adapter 注释：
-    // keeps its smallest quality-ladder output when no quality fits.
+    // 全部超预算时保留最小尝试（最后一档）。
     const { data, info } = output!
     const width = info.width || target.width
     const height = info.height || target.height
@@ -190,20 +189,31 @@ export function createRequestAttachments(): AttachmentStore & { store: InMemoryI
 
 /**
  * 将 data URL 列表准入为附件引用：逐张校验后统一保存（失败不产生部分引用）。
- * 返回 store（供 adapter resolveAttachments 使用）与按输入顺序的引用数组。
+ * 每张开始前检查取消信号；总数与字节预算按整个请求累计。返回 store
+ * （供 adapter resolveAttachments 使用）与按输入顺序的引用数组。
  */
 export async function admitImageDataUrls(
   dataUrls: string[],
+  signal?: AbortSignal,
 ): Promise<{ store: AttachmentStore & { store: InMemoryImageStore }; refs: ImageAttachmentRef[] }> {
+  // 计数按整个请求累计（chat.ts 跨所有 user 消息收集 data URL）。
   if (dataUrls.length > IMAGE_LIMITS.maxImagesPerMessage) {
-    throw new ImageRequestError(`a message may carry at most ${IMAGE_LIMITS.maxImagesPerMessage} images`)
+    throw new ImageRequestError(`a request may carry at most ${IMAGE_LIMITS.maxImagesPerMessage} images`)
   }
   const store = createRequestAttachments()
   const refs: ImageAttachmentRef[] = []
+  let totalBytes = 0
   for (const dataUrl of dataUrls) {
+    signal?.throwIfAborted()
     const { mediaType, bytes } = parseImageDataUrl(dataUrl)
+    totalBytes += bytes.byteLength
+    if (totalBytes > IMAGE_LIMITS.maxMessageImageBytes) {
+      throw new ImageRequestError(`request image payload exceeds the ${IMAGE_LIMITS.maxMessageImageBytes} byte budget`)
+    }
     const ref = await store.store.saveImage({ mediaType, data: bytes })
     refs.push(ref)
+    // 让出事件循环：长列表解码期间取消信号/关停能及时被观察到
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
   }
   return { store, refs }
 }

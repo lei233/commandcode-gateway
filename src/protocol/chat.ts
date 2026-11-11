@@ -1,12 +1,12 @@
 /**
  * Chat Completions 请求校验与转换为 DSH GenerateOptions。
  *
- * 行为基准为参考 Worker 的校验状态机：system/developer 文本按序合并，
- * user/assistant 文本与 assistant reasoning_content 转为 DSH 内容块，
- * tool_calls 保留原始 id 与顺序，role:tool 按 tool_call_id 配对；
- * 批次必须在下一条普通消息或新批次前闭合。网关差异：
- * - 采样参数映射 GenerateOptions 已有字段（temperature / reasoning_effort /
- *   max_tokens / stop），无正式映射能力的参数明确 400，不静默丢弃；
+ * 消息规则：system/developer 文本按序合并，user/assistant 文本与
+ * assistant reasoning_content 转为 DSH 内容块，tool_calls 保留原始 id
+ * 与顺序，role:tool 按 tool_call_id 配对；批次必须在下一条普通消息或
+ * 新批次前闭合。生成控制参数规则：
+ * - 仅映射 GenerateOptions 已有字段（temperature / reasoning_effort /
+ *   max_tokens），无正式映射能力的参数明确 400，不静默丢弃；
  * - 用户消息 image_url parts 保留原始顺序：base64 data URL 收集为
  *   `ImageDataUrl[]`（由 images.ts 转为附件引用），HTTP(S) 外链立即 400。
  */

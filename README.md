@@ -2,7 +2,7 @@
 
 基于 DSH CommandCode adapter 的独立 Chat Completions HTTP 网关。
 
-功能实现已完成：`POST /v1/chat/completions`（JSON/SSE、函数工具调用、data URL 图片）、`/v1/models`（5 分钟缓存 + 固定兜底）与 `/health` 均已可用。
+功能实现已完成：`POST /v1/chat/completions`（JSON/SSE、函数工具调用、data URL 图片）、`/v1/models`（5 分钟缓存 + 固定兜底）与 `/health` 均已可用（2026-11 审查修订：优雅关停连接清理、上游 404 透传、SSE 空流补 role 首帧、图片限额按请求口径）。
 
 ## 已确认范围
 
