@@ -22,5 +22,5 @@
 实现期间确认的行为修正（与架构文档原表述的差异）：
 
 - `stop` 参数：CLI wire 格式无对应字段（adapter `UNSUPPORTED_OPTION`），网关准入时 400，不静默丢弃。
-- `reasoning_effort`：仅接受 `low`/`medium`/`high` 显式档位。
+- `reasoning_effort`：任意非空字符串透传（含 `max`/`xhigh`/`off` 及未知值），仅校验类型；档位过滤由 adapter 按模型注册表（`KNOWN_EFFORTS`）处理，网关不复制该判定。
 - `/provider/v1/models` 响应为 OpenAI 风格 `{object:'list', data:[...]}`；adapter 自带进程级缓存与磁盘持久化，网关层 5 分钟缓存叠加其上。

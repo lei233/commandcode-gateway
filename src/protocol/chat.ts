@@ -54,8 +54,6 @@ const UNSUPPORTED_PARAMS: readonly string[] = [
   'metadata',
 ]
 
-const SUPPORTED_EFFORTS: readonly string[] = ['low', 'medium', 'high']
-
 interface ChatMessage {
   role: string
   content?: unknown
@@ -245,11 +243,13 @@ export function chatToGenerateOptions(
   // Stop 序列：CLI wire 格式无对应字段，adapter 以 UNSUPPORTED_OPTION 拒绝；
   // 网关在准入时提前返回同等明确的 400（UNSUPPORTED_PARAMS 已含 'stop'）。
 
-  // Reasoning effort: explicit level names mapped verbatim.
+  // Reasoning effort：任意非空字符串透传；档位是否对该模型生效由 adapter 按
+  // 模型注册表（KNOWN_EFFORTS）过滤——在表内上 wire，不在表内静默丢弃，
+  // 上游本就不因 effort 报错，网关不复制该判定（避免比上游更严格而误伤）。
   let reasoningEffort: ReturnType<typeof ReasoningEffortId> | undefined
   if (body.reasoning_effort !== undefined && body.reasoning_effort !== null) {
-    if (typeof body.reasoning_effort !== 'string' || !SUPPORTED_EFFORTS.includes(body.reasoning_effort)) {
-      throw invalid(`reasoning_effort must be one of ${SUPPORTED_EFFORTS.map((e) => JSON.stringify(e)).join(', ')}`)
+    if (typeof body.reasoning_effort !== 'string' || body.reasoning_effort === '') {
+      throw invalid('reasoning_effort must be a non-empty string')
     }
     reasoningEffort = ReasoningEffortId(body.reasoning_effort)
   }

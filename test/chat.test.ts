@@ -200,9 +200,19 @@ test('unsupported generation parameters are rejected explicitly', () => {
   }
 })
 
-test('invalid temperature and effort values are rejected', () => {
+test('reasoning_effort passes through verbatim; only type is validated', () => {
+  // 注册表档位（含 max/xhigh/off）与任意字符串一律透传，由 adapter 按模型表过滤
+  for (const effort of ['low', 'medium', 'high', 'xhigh', 'max', 'off', 'minimal', 'none', 'ultra']) {
+    const { options } = convert({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: effort })
+    assert.equal(options.reasoningEffort, effort, effort)
+  }
+  // 非字符串仍拒绝
+  expectInvalid({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 3 }, /reasoning_effort must be a non-empty string/)
+  expectInvalid({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: '' }, /reasoning_effort must be a non-empty string/)
+})
+
+test('invalid temperature is still rejected', () => {
   expectInvalid({ messages: [{ role: 'user', content: 'hi' }], temperature: 3 }, /temperature/)
-  expectInvalid({ messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'ultra' }, /reasoning_effort/)
 })
 
 test('image_url data URLs are collected in order; HTTP(S) links are rejected', () => {
