@@ -101,7 +101,13 @@ test('include_usage emits a final empty-choices usage frame before [DONE]', () =
   const usageFrame = docs.find((d) => d.usage !== undefined)
   assert.ok(usageFrame)
   assert.deepEqual(usageFrame.choices, [])
-  assert.deepEqual(usageFrame.usage, { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 })
+  // 缓存读命中以明细字段透出（cached_tokens）
+  assert.deepEqual(usageFrame.usage, {
+    prompt_tokens: 4,
+    completion_tokens: 2,
+    total_tokens: 6,
+    prompt_tokens_details: { cached_tokens: 1 },
+  })
   // 终序：usage 帧在 finish 帧之后、[DONE] 之前
   const usageIndex = docs.indexOf(usageFrame)
   const finishIndex = docs.findIndex((d) => d.choices?.[0]?.finish_reason === 'stop')

@@ -8,7 +8,8 @@ import { BlockAssembler } from '../runtime.ts'
 import { mapAdapterError } from '../commandcode.ts'
 
 import type { FinishReason, StreamChunk } from '../runtime.ts'
-import { MAX_AGGREGATED_BYTES, StreamFailure, finishToChatReason, isCancelLike, usageToChat } from './output.ts'
+import { MAX_AGGREGATED_BYTES, StreamFailure, finishToChatReason, isCancelLike, upstreamResponseId, usageToChat } from './output.ts'
+import type { ChatUsage } from './output.ts'
 
 export interface ChatJsonResult {
   id: string
@@ -25,11 +26,7 @@ export interface ChatJsonResult {
     }
     finish_reason: 'stop' | 'tool_calls' | 'length'
   }>
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
+  usage?: ChatUsage
 }
 
 export interface AggregateOptions {
@@ -50,6 +47,7 @@ export async function aggregateToChatJson(
   const cap = options.maxBytes ?? MAX_AGGREGATED_BYTES
   let sawSuccessfulFinish = false
   let finishReason: FinishReason | undefined
+  let finishChunk: Extract<StreamChunk, { type: 'finish' }> | undefined
   let bytes = 0
   let open = false
 
@@ -62,6 +60,7 @@ export async function aggregateToChatJson(
           }
           sawSuccessfulFinish = true
           finishReason = chunk.reason
+          finishChunk = chunk
           break
         }
         case 'text-delta':
@@ -130,8 +129,10 @@ export async function aggregateToChatJson(
   if (reasoning !== '') message.reasoning_content = reasoning
   if (toolCalls.length > 0) message.tool_calls = toolCalls
 
+  // id 优先用上游响应标识（排障可与上游日志/账单关联），无则自造。
+  const upstreamId = finishChunk !== undefined ? upstreamResponseId(finishChunk) : undefined
   const result: ChatJsonResult = {
-    id: `chatcmpl-${crypto.randomUUID()}`,
+    id: `chatcmpl-${upstreamId ?? crypto.randomUUID()}`,
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
     model: options.model,

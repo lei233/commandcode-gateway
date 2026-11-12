@@ -72,7 +72,45 @@ test('usage counts cache read/write into prompt tokens', async () => {
     { type: 'usage', usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 100, cacheWriteTokens: 50 } },
   ]
   const result = await aggregateToChatJson(streamOf(chunks), { model: 'm1' })
-  assert.deepEqual(result.usage, { prompt_tokens: 160, completion_tokens: 5, total_tokens: 165 })
+  // 缓存读命中作为明细透出；cacheWrite 无 OpenAI 明细字段，仅计入总量
+  assert.deepEqual(result.usage, {
+    prompt_tokens: 160,
+    completion_tokens: 5,
+    total_tokens: 165,
+    prompt_tokens_details: { cached_tokens: 100 },
+  })
+})
+
+test('usage carries reasoning token detail when present', async () => {
+  const chunks: StreamChunk[] = [
+    ...textStream('hi'),
+    { type: 'usage', usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 3 } },
+  ]
+  const result = await aggregateToChatJson(streamOf(chunks), { model: 'm1' })
+  assert.deepEqual(result.usage, {
+    prompt_tokens: 10,
+    completion_tokens: 5,
+    total_tokens: 15,
+    completion_tokens_details: { reasoning_tokens: 3 },
+  })
+})
+
+test('usage omits detail objects when no cache or reasoning tokens', async () => {
+  const chunks: StreamChunk[] = [
+    ...textStream('hi'),
+    { type: 'usage', usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0 } },
+  ]
+  const result = await aggregateToChatJson(streamOf(chunks), { model: 'm1' })
+  assert.deepEqual(result.usage, { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 })
+})
+
+test('response id prefers the upstream replay identifier', async () => {
+  const chunks: StreamChunk[] = [
+    ...textStream('hi'),
+    { type: 'finish', reason: { kind: 'stop' }, replayState: { response: { providerRequestId: 'req-abc-123' } } },
+  ]
+  const result = await aggregateToChatJson(streamOf(chunks), { model: 'm1' })
+  assert.equal(result.id, 'chatcmpl-req-abc-123')
 })
 
 test('error finish reason fails with 502', async () => {
