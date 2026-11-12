@@ -36,6 +36,8 @@ export interface GatewayError {
   code: string
   message: string
   retryAfterSeconds?: number
+  /** 上游请求标识（provider 盖入 failure.requestId），排障关联上游日志。 */
+  requestId?: string
 }
 
 /** adapter 运行配置；只含固定事实，不含凭据。 */
@@ -138,11 +140,15 @@ export function mapAdapterError(error: unknown): GatewayError {
     const retryAfterSeconds = failure.providerRetryAfterMs !== undefined && failure.providerRetryAfterMs > 0
       ? Math.ceil(failure.providerRetryAfterMs / 1000)
       : undefined
+    const requestId = typeof (failure as { requestId?: unknown }).requestId === 'string'
+      ? (failure as { requestId: string }).requestId
+      : undefined
     return {
       status: httpStatus,
       code: boundedCode(failure.code),
       message: boundedMessageFor(httpStatus),
       retryAfterSeconds,
+      requestId,
     }
   }
   if (isAbortTimeout(error)) {

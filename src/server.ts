@@ -53,8 +53,15 @@ export interface ServerOptions {
 /** 在途生成请求登记；健康检查不计入。 */
 const JSON_CONTENT_TYPE = 'application/json'
 
-function errorBody(message: string, type: string, code?: string): string {
-  return JSON.stringify({ error: { message, type, ...(code !== undefined ? { code } : {}) } })
+function errorBody(message: string, type: string, code?: string, requestId?: string): string {
+  return JSON.stringify({
+    error: {
+      message,
+      type,
+      ...(code !== undefined ? { code } : {}),
+      ...(requestId !== undefined ? { request_id: requestId } : {}),
+    },
+  })
 }
 
 function errorTypeForStatus(status: number): string {
@@ -77,7 +84,7 @@ function errorTypeForStatus(status: number): string {
   }
 }
 
-function respondError(res: ServerResponse, status: number, message: string, code?: string, retryAfterSeconds?: number): void {
+function respondError(res: ServerResponse, status: number, message: string, code?: string, retryAfterSeconds?: number, requestId?: string): void {
   if (res.headersSent) {
     res.destroy()
     return
@@ -85,7 +92,7 @@ function respondError(res: ServerResponse, status: number, message: string, code
   const headers: Record<string, string> = { 'content-type': JSON_CONTENT_TYPE }
   if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) headers['retry-after'] = String(retryAfterSeconds)
   res.writeHead(status, headers)
-  res.end(errorBody(message, errorTypeForStatus(status), code))
+  res.end(errorBody(message, errorTypeForStatus(status), code, requestId))
 }
 
 /** 将 adapter/输出层/图片准入错误统一为 GatewayError 表面。 */
@@ -330,7 +337,7 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
           res.end(JSON.stringify(result))
         } catch (error) {
           const gatewayError = toGatewayError(error)
-          respondError(res, gatewayError.status, gatewayError.message, gatewayError.code, gatewayError.retryAfterSeconds)
+          respondError(res, gatewayError.status, gatewayError.message, gatewayError.code, gatewayError.retryAfterSeconds, gatewayError.requestId)
         }
         return
       }
@@ -385,12 +392,12 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
       } catch (error) {
         if (!opened) {
           const gatewayError = toGatewayError(error)
-          respondError(res, gatewayError.status, gatewayError.message, gatewayError.code, gatewayError.retryAfterSeconds)
+          respondError(res, gatewayError.status, gatewayError.message, gatewayError.code, gatewayError.retryAfterSeconds, gatewayError.requestId)
           return
         }
         // 已开流：错误帧 + 正常响应关闭（保证缓冲中的帧送达），不追加 [DONE]
         const gatewayError = toGatewayError(error)
-        res.write(`data: ${errorBody(gatewayError.message, errorTypeForStatus(gatewayError.status), gatewayError.code)}\n\n`)
+        res.write(`data: ${errorBody(gatewayError.message, errorTypeForStatus(gatewayError.status), gatewayError.code, gatewayError.requestId)}\n\n`)
         res.end()
       } finally {
         await (iterable as AsyncIterable<unknown> & { return?: () => Promise<unknown> }).return?.().catch(() => undefined)
@@ -408,7 +415,7 @@ export function startGateway(options: ServerOptions): Promise<GatewayServer> {
         return
       }
       const gatewayError = toGatewayError(error)
-      respondError(res, gatewayError.status, gatewayError.message, gatewayError.code, gatewayError.retryAfterSeconds)
+      respondError(res, gatewayError.status, gatewayError.message, gatewayError.code, gatewayError.retryAfterSeconds, gatewayError.requestId)
     } finally {
       active.delete(scope)
     }

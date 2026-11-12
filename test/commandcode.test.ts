@@ -179,6 +179,14 @@ test('mapAdapterError maps unknown statuses and codes to bounded 502s', () => {
   assert.equal(mapAdapterError(new Error('network gone')).status, 502)
 })
 
+test('mapAdapterError carries the upstream request id when the provider stamped one', () => {
+  const withId = mapAdapterError(new LlmError('boom', 'PROTOCOL', { status: 500, requestId: 'req-upstream-42' as never }))
+  assert.equal(withId.requestId, 'req-upstream-42')
+  // 无 id 的失败不带该字段
+  const withoutId = mapAdapterError(new LlmError('boom', 'PROTOCOL', { status: 500 }))
+  assert.equal(withoutId.requestId, undefined)
+})
+
 test('mapAdapterError maps abort timeouts to 504 and cancels to 499', () => {
   const timeout = new Error('signal timed out')
   timeout.name = 'TimeoutError'

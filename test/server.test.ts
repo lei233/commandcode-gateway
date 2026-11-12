@@ -213,6 +213,39 @@ test('upstream 401 maps to JSON 401 with Retry-After absent', async () => {
   }
 })
 
+test('upstream failures carry the provider request id in the JSON error body', async () => {
+  // 上游 500 + x-request-id 头：adapter 盖入 failure.requestId，网关透出到错误体
+  const upstream = {
+    fetchImpl: (async (input: unknown) => {
+      const url = String(input)
+      if (url.endsWith('/provider/v1/models')) {
+        return new Response(JSON.stringify({ object: 'list', data: [{ id: 'mock-model', name: 'M', context_length: 64000 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url.includes('/alpha/whoami') || url.includes('/alpha/billing')) return new Response('{}', { status: 200 })
+      return new Response(JSON.stringify({ error: { message: 'internal' } }), {
+        status: 500,
+        headers: { 'content-type': 'application/json', 'x-request-id': 'req-upstream-e2e-7' },
+      })
+    }) as typeof fetch,
+    collectUpstreamCalls: () => [] as Array<{ url: string }>,
+  }
+  const gateway = await startGateway({
+    config: { ...BASE_CONFIG },
+    adapter: { apiBase: 'https://upstream.example', workingDir: '/workspace', modelsCachePath: `/tmp/ccgw-rid-${crypto.randomUUID()}.json`, fetchImpl: upstream.fetchImpl },
+  })
+  try {
+    const base = `http://127.0.0.1:${gateway.address.port}`
+    const json = await fetch(`${base}/v1/chat/completions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH }, body: chatBody(),
+    })
+    assert.equal(json.status, 502)
+    const body = await json.json() as { error: { request_id?: string } }
+    assert.equal(body.error.request_id, 'req-upstream-e2e-7')
+  } finally {
+    await gateway.close(1_000)
+  }
+})
+
 test('invalid body rejected with 400 before upstream calls', async () => {
   await withServer([], {}, async (base, upstream) => {
     const noModel = await fetch(`${base}/v1/chat/completions`, {
