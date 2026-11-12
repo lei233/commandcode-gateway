@@ -34,11 +34,14 @@ export class ImageRequestError extends Error {
 
 const MEDIA_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
-/** 网关图片准入边界（个人部署量级）。 */
+/**
+ * 网关图片准入边界：对齐 adapter 实际请求预算（60 张 / 32MiB 请求版本
+ * 字节）；聚合字节按原始字节计，取 64MiB 落在 100MiB body 上限内。
+ */
 export const IMAGE_LIMITS: ImageAttachmentLimits = {
   maxImageBytes: 10 * 1024 * 1024,
-  maxImagesPerMessage: 8,
-  maxMessageImageBytes: 20 * 1024 * 1024,
+  maxImagesPerMessage: 60,
+  maxMessageImageBytes: 64 * 1024 * 1024,
   maxImagePixels: 40_000_000,
   maxImageDimension: 10_000,
   mediaTypes: MEDIA_TYPES,

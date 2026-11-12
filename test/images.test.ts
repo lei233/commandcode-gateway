@@ -81,6 +81,23 @@ test('admitImageDataUrls rejects corrupt bytes and over-limit counts', async () 
   await assert.rejects(() => admitImageDataUrls(urls), /at most/)
 })
 
+test('admitImageDataUrls admits multi-document batches under the aligned budget', async () => {
+  // 文档抽取场景：30 张小图（旧 8 张上限会拒绝，对齐 adapter 预算后放行）
+  const urls = Array.from({ length: 30 }, () => 'data:image/png;base64,' + Buffer.from('x'.repeat(16)).toString('base64'))
+  const { refs } = await admitImageDataUrls(urls.map((u) => 'data:image/png;base64,' + b64OfTinyPng()))
+  assert.equal(refs.length, urls.length)
+})
+
+/** 最小合法 PNG 的 base64（1x1 灰度），用于纯计数维度的批量测试。 */
+function b64OfTinyPng(): string {
+  const png = Buffer.from(
+    '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da6364000000060002' +
+    '3081d02f0000000049454e44ae426082',
+    'hex',
+  )
+  return png.toString('base64')
+}
+
 test('readImageRequest scales down to the target without enlarging', async () => {
   const { store, refs } = await admitImageDataUrls([await pngDataUrl(3200, 1600)])
   const ref = refs[0]!
